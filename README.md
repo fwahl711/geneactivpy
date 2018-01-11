@@ -9,12 +9,12 @@ To see the commands: `geneactivpy --help`
 
 ## Repo Structure 
 
-geneactivpy:
-┣━ README.md
-┣━ LICENSE
-┣━ setup.py
-┣━ geneactivpy:
-┃   ┣━ __init__.py
-┃   ┗━ patient.py
-┗━ tests:
-    ┗━ test.py
+geneactivpy:<br/>
+┣━ README.md<br/>
+┣━ LICENSE<br/>
+┣━ setup.py<br/>
+┣━ geneactivpy:<br/>
+┃   ┣━ __init__.py<br/>
+┃   ┗━ patient.py<br/>
+┗━ tests:<br/>
+    ┗━ test_basic.py<br/>
