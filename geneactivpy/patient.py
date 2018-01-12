@@ -425,7 +425,7 @@ class Patient:
             return None
         
         # Absolute value of change between angle
-        diff_angles=self.angle.diff().abs()
+        diff_angles=self.angles.diff().abs()
         
         def window_inactivity(window):
             """
