@@ -4,6 +4,9 @@
 ## Description
 Command line program used to parse GENEActiv watch's binary files.
 
+## Install
+Run `python setup.py install` to install the package.
+
 ## Examples
 To see the commands: `geneactivpy --help`
 
