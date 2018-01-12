@@ -37,9 +37,6 @@ def binary(intermediate,target_directory,endpoint,compress_minutes,input_files):
     '''
     Takes binary files and extracts the data within them.
     '''
-    click.echo("Number of arguments: {}".format(len(input_files)))
-    click.echo("Arguments: {}".format(input_files))
-    click.echo("type: {}".format(type(input_files)))
     bin_files=[i for i in input_files if i.endswith(".bin") ]
     click.echo("Binary files: {}".format(bin_files))
     click.echo("Endpoint: {}".format(endpoint))
@@ -48,6 +45,7 @@ def binary(intermediate,target_directory,endpoint,compress_minutes,input_files):
         click.echo("Processing file: {}".format(f))
         tmp=Patient(path_binary=f,endpoint=endpoint,compress_minutes=compress_minutes)
         click.echo("Writing file: {}".format(f))
+        tmp.to_csv(target_directory)
 
 @cli.command('combine')
 @click.option('--target_directory','-t',default=os.path.join(os.getcwd(),"ActiwatchData"),help="The top directory for all the output of the application.")
