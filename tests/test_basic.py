@@ -14,16 +14,23 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
     
-#from .context import geneactivpy
-from ..geneactivpy.patient import Patient
+#from context import geneactivpy
+import os
+import sys
+PACKAGE_PARENT=os.path.abspath("..")
+sys.path.append(PACKAGE_PARENT)
+
+from geneactivpy.patient import Patient
 from time import time
+
 
 f1="../../Data/EAT201__031959_2017-06-22 13-59-41.bin"
 f2="../../Data/EAT201__031959_2017-07-06 11-16-27.bin"
 
 if __name__=="__main__":
+    print(os.getcwd())
     t0=time()
-    p1_1=Patient(path_binary=f1,endpoint='raw')
+    p1_1=Patient(path_binary=f1)
     t1=time()
     print("Shape of p1_1: {}".format(p1_1.latest_df.shape))
     print("File 1 took {} seconds to process.".format((t1-t0)))

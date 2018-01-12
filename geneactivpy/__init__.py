@@ -27,7 +27,7 @@ def cli():
     pass
 
 
-@cli.command()
+@cli.command('binary')
 @click.option('--intermediate/--no-intermediate',default=True, help="Determine if intermediate files should be created.")
 @click.option('--target_directory','-t',default=os.path.join(os.getcwd(),"ActiwatchData"),help="The top directory for all the output of the application.")
 @click.option('--endpoint','-e',type=click.Choice(['raw','calibrate','roll','angles','inactivity','compress']),default='compress',help="Process the file up to that step and then save progress.")
@@ -46,17 +46,17 @@ def binary(intermediate,target_directory,endpoint,compress_minutes,input_files):
     for i,f in enumerate(bin_files):
         # Create an Patient instance
         click.echo("Processing file: {}".format(f))
-        tmp=Patient(path_binary=f,end_point=end_point,compress_minutes=compress_minutes)
-        click.echo("Writing file: {}".format(f)
+        tmp=Patient(path_binary=f,endpoint=endpoint,compress_minutes=compress_minutes)
+        click.echo("Writing file: {}".format(f))
 
-@cli.command()
+@cli.command('combine')
 @click.option('--target_directory','-t',default=os.path.join(os.getcwd(),"ActiwatchData"),help="The top directory for all the output of the application.")
-@click.option('--endpoint','-e',type=click.Choice(['raw','calibrate','roll','angles','inactivity','compress']),default='compress',help="Process the file up to that step and then save progress.")
+@click.option('--endpoint','-e',type=click.Choice(['raw','calibrate','roll','angles','inactivity','compress']),default='calibrate',help="Process the file up to that step and then save progress.")
 @click.argument('input_files', type=click.Path(exists=True),nargs=2)
-def merge(target_directory,endpoint,input_files):
+def combine(target_directory,endpoint,input_files):
     """
-    Takes two binary files, processes them, combines the dataframes
-    and then save the sleep activity to a file.
+    Takes two binary files, processes them up to 'endpoint',
+    combines the dataframes and then saves it to a file.
     """
     if len(input_files) != 2:
         click.echo("Need to give two binary files to join them.")
@@ -64,13 +64,13 @@ def merge(target_directory,endpoint,input_files):
     f1=Patient(path_binary=input_files[0],endpoint=endpoint)
     f2=Patient(path_binary=input_files[1],endpoint=endpoint)
     combined=f1+f2
-    
-@cli.command()
-@click.option('--target_directory','-t',default=os.path.join(os.getcwd(),"ActiwatchData"),help="The top directory for all the output of the application.")
-@click.argument('input_files', type=click.Path(exists=True),nargs=-1)
-def compress(target_directory,input_files):
-    """
-    Takes the files and compresses them.
-    """
-    click.echo("Target directory: {}".format(target_directory))
-    click.echo("Input files: {}".format(input_files))
+
+    # Output to file
+    if not os.path.exists(target_directory):
+        os.mkdir(target_directory)
+    patient_name=f1.fn
+    sub_dir=os.path.join(target_directory,patient_name)
+    if not os.path.exists(sub_dir):
+        os.mkdir(sub_dir)
+    output_file=os.path.join(sub_dir,(patient_name+"___combined.csv"))
+    combined.to_csv(output_file,date_format="%Y-%m-%d %H:%M:%S.%f")

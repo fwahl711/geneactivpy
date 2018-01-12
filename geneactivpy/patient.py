@@ -13,7 +13,7 @@ Class that does the bulk of the work.
 """
 
 class Patient:
-    def __init__(self,path_binary=None,path_processed=None,endpoint='compress',write_intermediary=False,compress_minutes=0,patient_name=None):
+    def __init__(self,path_binary=None,path_processed=None,endpoint="compress",write_intermediary=False,compress_minutes=0,patient_name=None):
         self.calibration=None
         self.basic_info=None
         self.df=None
@@ -39,7 +39,7 @@ class Patient:
                 self.fn=os.path.basename(self.path_binary).split(".")[:-1]
 
         # Last step do to
-        self.termination_step=endpoint
+        self.endpoint=endpoint
         # Whether to create intermediary files if True
         ## else save after the last step
         self.write_intermediary=write_intermediary
@@ -49,7 +49,6 @@ class Patient:
             self.type_processed=self.get_type_file()
         elif self.path_binary:
             self.process_binary()
-
 
 
     def __add__(self,other):
@@ -125,38 +124,38 @@ class Patient:
         Stops at the step that is given at the start.
         """
         # Open file
-        with open(path_binary_file,'r') as f:
+        with open(self.path_binary,'r') as f:
             data = [line.strip() for line in f]
 
         # Extract the basic device information
         self.get_basic_device_info(data)
-        if self.termination_step=='basic':
+        if self.endpoint=='basic':
             return
         # Extract raw values
         self.get_raw_values(data)
-        if self.termination_step=='raw':
+        if self.endpoint=='raw':
             return
         # Calibrate values
         self.calibrate_df()
-        if self.termination_step=='calibrate':
+        if self.endpoint=='calibrate':
             return
         # Roll values (smooths out values)
         self.roll_window(operation='median',shift=True,window_seconds=5)
-        if self.termination_step=='roll':
+        if self.endpoint=='roll':
             return
         # Calculate wrist angles
         self.calc_angle()
-        if self.termination_step=='angles':
+        if self.endpoint=='angles':
             return
         # Get sleep score
         self.determine_activity()
-        if self.termination_step=='inactivity':
+        if self.endpoint=='inactivity':
             return
         # Compress dataframe
         self.inactivity=self.compress_windows_df(self.inactivity,c_w_minutes=self.compress_minutes,operation='sum')
         self.inactivity_compressed=True
         self.latest_df=self.inactivity
-        if self.termination_step=='compress':
+        if self.endpoint=='compress':
             return
 
     def get_type_file(self):
@@ -475,13 +474,17 @@ class Patient:
             return None
         return resampled_data
 
-    def to_csv(self,output_directory,patient_code=self.fn,step_name=self.endpoint,time_format="%Y-%m-%d %H:%M:%S.%f"):
+    def to_csv(self,output_directory,patient_code=None,step_name=None,time_format="%Y-%m-%d %H:%M:%S.%f"):
         """
         Given a dataframe, save it with the name of the step.
         Within the output_directory, have directories for 
         each participant and within them the different 
         intermediate steps and the final output.
         """
+        if patient_code is None:
+            patient_code=self.fn
+        if step_name is None:
+            step_name=self.endpoint
         try:
             if self.latest_df==None:
                 raise NameError
@@ -501,7 +504,6 @@ class Patient:
         # Create directory if it does not exist
         if not os.path.exists(patient_path):
             os.mkdir(patient_path)
-        
         file_name=patient_code+"___"+step_name+".csv"
         file_path=os.path.join(patient_path,file_name)
         logging.info("`to_csv` is writing to {}.".format(file_path))
