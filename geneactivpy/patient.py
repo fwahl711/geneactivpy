@@ -394,7 +394,7 @@ class Patient:
             return
         
         self.angles=self.df['z']/np.sqrt(np.power(self.df['x'],2)+np.power(self.df['y'],2))
-        self.angles=np.arctan(angle)*180/np.pi
+        self.angles=np.arctan(self.angles)*180/np.pi
         self.latest_df=self.angles
 
     def determine_activity(self,window_minutes=5,diff_angle_threshold=5):
