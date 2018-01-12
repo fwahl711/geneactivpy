@@ -26,7 +26,7 @@ class Patient:
 
         self.path_binary=path_binary
         self.path_processed=path_processed
-        if self.path_binary==None and self.path_processed==None:
+        if self.path_binary is None and self.path_processed is None:
             logging.error("A file is required to create a class instance. Specify either 'path_binary' or 'path_processed'.")
             return
 
@@ -58,7 +58,7 @@ class Patient:
         if not isinstance(other,Patient):
             logging.warning("Attempting to add a Patient with a {}.".format(type(other)))
             return self.latest_df
-        if other.latest_df==None:
+        if other.latest_df is None:
             logging.info("The second Patient object does not have a value set for latest_df.")
             return self.latest_df
         if not (isinstance(self.latest_df,pd.DatetimeIndex) and isinstance(other.latest_df,pd.DatetimeIndex)):
@@ -223,23 +223,23 @@ class Patient:
             tmp=recording_block_list[index]
     
             if tmp.startswith("Page Time"):
-                if page_time==None:
+                if page_time is None:
                     index_start_t=tmp.index(":")+1
                     time_str=tmp[index_start_t:].strip()
                     page_time=pd.to_datetime(time_str,format="%Y-%m-%d %H:%M:%S:%f")
     
             elif tmp.startswith("Temperature"):
-                if temperature==None:
+                if temperature is None:
                     temperature=float(tmp.split(":")[1])
     
             elif tmp.startswith("Measurement Frequency"):
-                if hexstring==None:
+                if hexstring is None:
                     # Add one to the index, the hexstring is the one after Measurement Frequency
                     hexstring=recording_block_list[index+1].strip()
                     break
     
         # If it can't find either of the variables
-        if temperature==None or page_time==None or hexstring==None:
+        if temperature is None or page_time is None or hexstring is None:
             return
     
         # Turn the hexstring into useful data (ie get x,y,z and light info out of it)
@@ -351,11 +351,13 @@ class Patient:
         """
         if window_seconds>0:
             roll_seconds="{}S".format(window_seconds)
+            logging.info("`roll_window`: roll_seconds={}".format(roll_seconds))
         else:
             return None
         
         # If not dataframe
         if not isinstance(self.df,pd.DataFrame):
+            logging.warning("`df` is not a Pandas DataFrame instance.")
             return None
             
         rolled=self.df.rolling(roll_seconds)
@@ -383,7 +385,7 @@ class Patient:
             atan(z/sqrt(x^2 +y^2)) *180/pi
         """
         # Check if self.df has been calculated
-        if self.df==None:
+        if self.df is None:
             logging.warning("Dataframe `df` is not defined. Probably skipped a step.")
             return
 
@@ -486,7 +488,7 @@ class Patient:
         if step_name is None:
             step_name=self.endpoint
         try:
-            if self.latest_df==None:
+            if self.latest_df is None:
                 raise NameError
         except NameError:
             click.echo("Attempting to write a variable that does not exists.")
