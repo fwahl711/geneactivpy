@@ -2,30 +2,11 @@ from setuptools import setup, find_packages
 
 setup(
     name='geneactivpy',
-    version='0.1',
-    author='acs-monkey',
+    version='0.2',
+    author='Sebastien Bah',
     packages=find_packages(),
-    long_description='''
-# geneactivpy
-
-## Description
-
-
-## Examples
-
-## Repo Structure 
-
-geneactivpy:
-┣━ README.md
-┣━ LICENSE
-┣━ setup.py
-┣━ geneactivpy:
-┃   ┗━ __init__.py
-┗━ tests:
-    ┗━ test.py
-''',
     license='''
-#   Copyright (C) 2018  acs-monkey
+#   Copyright (C) 2018 Sebastien Bah 
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -43,9 +24,10 @@ geneactivpy:
     include_package_data=True,
     install_requires=[
         'Click',
+        'numpy',
+        'pandas',
     ],
-    entry_points='''
-        [console_scripts]
-        geneactivpy=geneactivpy.__init__:main
-    ''',
+    entry_points={
+        'console_scripts':['geneactivpy=geneactivpy.__init__:cli']}
+    ,     
 )

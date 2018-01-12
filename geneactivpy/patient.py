@@ -1,39 +1,123 @@
+import click
 import logging
 from multiprocessing import Pool
+from datetime import timedelta
 import multiprocessing
 import numpy as np
 import pandas as pd
 import os
 import re
 
+"""
+Class that does the bulk of the work.
+"""
+
 class Patient:
-    def __init__(self,path_binary=None,path_processed=None,last_step=None,write_intermediary=False):
+    def __init__(self,path_binary=None,path_processed=None,endpoint='compress',write_intermediary=False,compress_minutes=0,patient_name=None):
+        self.calibration=None
+        self.basic_info=None
+        self.df=None
+        self.angles=None
+        self.inactivity=None
+        self.inactivity_compressed=False
+
+        self.latest_df=None
+        self.compress_minutes=compress_minutes
+
         self.path_binary=path_binary
         self.path_processed=path_processed
         if self.path_binary==None and self.path_processed==None:
             logging.error("A file is required to create a class instance. Specify either 'path_binary' or 'path_processed'.")
             return
 
+        # set filename base (take patient_name)
+        self.fn=patient_name
+        if not self.fn:
+            if self.path_processed:
+                self.fn=os.path.basename(self.path_processed).split(".")[:-1]
+            elif self.path_binary:
+                self.fn=os.path.basename(self.path_binary).split(".")[:-1]
+
         # Last step do to
-        self.termination_step=last_step
+        self.termination_step=endpoint
         # Whether to create intermediary files if True
         ## else save after the last step
         self.write_intermediary=write_intermediary
+
         if self.path_processed:
             # Read processed file into Dataframe
             self.type_processed=self.get_type_file()
         elif self.path_binary:
             self.process_binary()
 
-        self.calibration=None
-        self.basic_info=None
-        self.df=None
+
 
     def __add__(self,other):
         """
-        Overload the '+' to merge the files
+        Overload the '+' to merge the dataframes. 
         """
-        pass
+        if not isinstance(other,Patient):
+            logging.warning("Attempting to add a Patient with a {}.".format(type(other)))
+            return self.latest_df
+        if other.latest_df==None:
+            logging.info("The second Patient object does not have a value set for latest_df.")
+            return self.latest_df
+        if not (isinstance(self.latest_df,pd.DatetimeIndex) and isinstance(other.latest_df,pd.DatetimeIndex)):
+            logging.warning("`merge_tables`: one of the data structure passed does not have an datetime as the index.")
+            return None
+        
+        ## Determine which file comes first
+        if self.latest_df.index[0]>other.latest_df.index[0]:
+            first=other.latest_df
+            second=self.latest_df
+        elif df1.index[0]<df2.index[0]:
+            first=self.latest_df
+            second=other.latest_df
+        else:
+            logging.warning("`__add__`: both dataframes start at the same timepoint.")
+            if len(first)>len(second):
+                return first
+            else:
+                return second
+        
+        ## Determine if there is overlap in the beginning and end of the recordings
+        if first.index[-1]>second.index[0]:
+            # Overlap, apply function that determines action (with option to change default behaviour)
+            first,second=self.overlap_action(first,second,behaviour="half")
+
+        if first and second:
+            appended_df=pd.concat([first,second],axis=0,join='outer',ignore_index=False)
+            return appended_df
+        else:
+            return first
+
+    def overlap_correction(self,first,second,behaviour='half'):
+        """
+        Deal with overlapping data.
+        Need to find intersect (section of interest).
+        Apply given behaviour, where to cut.
+        """
+        # Get index of intersect
+        intersect_end_first=first.index.intersection(second.index)
+        intersect_begin_second=second.index.intersection(first.index)
+        len_intersect=len(intersect_end_first)
+        
+        # Remove equally in both data structures
+        if behaviour=='half':
+            n_elem_cut=len_intersect//2
+            first=first.drop(index=intersect_end_first[n_elem_cut:],axis=0)
+            second=second.drop(index=intersect_begin_second[:n_elem_cut],axis=0)
+        elif behaviour=='first':
+            first=first.loc[first.index[0]:intersect_end_first[0]]
+        elif behaviour=='second':
+            second=second.loc[intersect_begin_second[-1]:second.index[-1]]
+        else:
+            logging.warning("`overlap_correction`: invalid behaviour on how to deal with overlap.")
+            return None,None
+        
+        # Start looking from the end of the intersect_end_first 
+        # and from the beginning of the intersect_begin_second
+        return first,second
 
     def process_binary(self):
         """
@@ -62,11 +146,18 @@ class Patient:
             return
         # Calculate wrist angles
         self.calc_angle()
-
+        if self.termination_step=='angles':
+            return
         # Get sleep score
-
+        self.determine_activity()
+        if self.termination_step=='inactivity':
+            return
         # Compress dataframe
-        pass
+        self.inactivity=self.compress_windows_df(self.inactivity,c_w_minutes=self.compress_minutes,operation='sum')
+        self.inactivity_compressed=True
+        self.latest_df=self.inactivity
+        if self.termination_step=='compress':
+            return
 
     def get_type_file(self):
         file_path=self.path_processed
@@ -214,6 +305,7 @@ class Patient:
    
         # Concatenate all the small dfs from the individual block parsing
         self.df=pd.concat(returned_dfs)
+        self.latest_df=self.df
 
     def validate_columns(self,required_columns=["x","y","z","temperature"]):
         columns=self.df.columns
@@ -236,8 +328,8 @@ class Patient:
         self.df["z"]=(self.df["z"]*100-self.basic_info["z_offset"])/self.basic_info["z_gain"]
         self.df["light"]=self.df["light"]*self.basic_info["lux"]/self.basic_info["volts"]
         self.calibration=True
+        self.latest_df=self.df
         
-
     def find_datetime_shift(self,seconds=5):
         """
         Rolling is done from the right, if you want from the left
@@ -252,8 +344,7 @@ class Patient:
                 break
             else:
                 shift_val+=1
-    
-    
+ 
     def roll_window(self,operation='median',shift=True,window_seconds=5):
         """
         Takes a dataframe and creates rolling windows. Using those
@@ -284,6 +375,7 @@ class Patient:
         if shift:
             shift_val=-1*self.find_datetime_shift(seconds=window_seconds)
             self.df=self.df.shift(shift_val)
+        self.latest_df=self.df
 
     def calc_angle(self):
         """
@@ -291,10 +383,127 @@ class Patient:
         Equation:
             atan(z/sqrt(x^2 +y^2)) *180/pi
         """
+        # Check if self.df has been calculated
+        if self.df==None:
+            logging.warning("Dataframe `df` is not defined. Probably skipped a step.")
+            return
+
         if not self.validate_columns(required_columns=['x','y','z']):
             logging.error("Cannot calculate the angle, a column is missing.")
             return
         
-        angle=self.df['z']/np.sqrt(np.power(self.df['x'],2)+np.power(self.df['y'],2))
-        angle=np.arctan(angle)*180/np.pi
-        return angle
+        self.angles=self.df['z']/np.sqrt(np.power(self.df['x'],2)+np.power(self.df['y'],2))
+        self.angles=np.arctan(angle)*180/np.pi
+        self.latest_df=self.angles
+
+    def determine_activity(self,window_minutes=5,diff_angle_threshold=5):
+        """
+        Computes the change of angles between each point (avg of 5seconds)
+        and then rolls on windows of size window_minutes to determine if
+        the max change is bigger than angles_threshold or if the -1 * min
+        change is bigger than angles_threshold. Inactivity is when the 
+        values are between -threshold and +threshold.
+        """
+        try:
+            # Checking as to the type of input
+            if not isinstance(self.angles,pd.Series):
+                raise ValueError
+        except NameError:
+            logging.error("Angles has not been calculated.")
+            return
+        except ValueError:
+            logging.error("Angles is not a pandas series. An error has occured somewhere. Find it.")
+            return
+        
+        # Rolling rule prep
+        if (isinstance(window_minutes, int) or isinstance(window_minutes,float)) and window_minutes>0:
+            roll_rule="{:.2g}T".format(window_minutes)
+            logging.info("'determine_activity': window for the roll=  {} minutes".format(roll_rule))
+        else:
+            loggin.error("'determine_activity': window_minutes is not a valid input [{}]".format(window_minutes))
+            return None
+        
+        # Absolute value of change between angle
+        diff_angles=self.angle.diff().abs()
+        
+        def window_inactivity(window):
+            """
+            Given a window in a roll, determine if the maximum diff 
+            in the window is lower than 5deg.
+            Inactivity == 1
+            Activity == 0
+            """
+            absolute_max=window.max()
+            if absolute_max<diff_angle_threshold:
+                return 1
+            else:
+                return 0
+        
+        self.inactivity=diff_angles.rolling(roll_rule).apply(window_inactivity)
+        self.latest_df=self.inactivity
+
+    def compress_windows_df(self,data,c_w_minutes=0,c_w_seconds=0,operation='sum'):
+        """
+        Takes a dataframe/serie, groups tries to group by `c_w_minutes` if not
+        with `c_w_seconds` and else it fails.
+        Then after resampling the data, it applies `operation` on it.
+        `operation`: sum, mean, std, median, count
+        """
+        if c_w_minutes>0:
+            # Convert compress_window_minute to appropriate format
+            sampling_rule="{:.2g}T".format(c_w_minutes)
+        elif c_w_seconds>0:
+            # Convert compress_window_minute to appropriate format
+            sampling_rule="{:.2g}S".format(c_w_seconds)
+        else:
+            return None
+        
+        resampled_data=data.resample(sampling_rule)
+        
+        if operation == 'sum':
+            resampled_data=resampled_data.sum()
+        elif operation == 'mean':
+            resampled_data=resampled_data.mean()
+        elif operation == 'std':
+            resampled_data=resampled_data.std()
+        elif operation == 'median':
+            resampled_data=resampled_data.median()
+        elif operation == 'count':
+            resampled_data=resampled_data.count()
+        else:
+            logging.error("'compress_data': operation '{}' not supported.".format(operation))
+            return None
+        return resampled_data
+
+    def to_csv(self,output_directory,patient_code=self.fn,step_name=self.endpoint,time_format="%Y-%m-%d %H:%M:%S.%f"):
+        """
+        Given a dataframe, save it with the name of the step.
+        Within the output_directory, have directories for 
+        each participant and within them the different 
+        intermediate steps and the final output.
+        """
+        try:
+            if self.latest_df==None:
+                raise NameError
+        except NameError:
+            click.echo("Attempting to write a variable that does not exists.")
+            logging.error("Attempting to write a variable that does not exists. ")
+            return None
+        # Type check of df
+        if not (isinstance(self.latest_df,pd.DataFrame) or isinstance(self.latest_df,pd.Series)):
+            logging.error("The input is not an instance of a DataFrame or a Series [type={}]".format(str(type(df))))
+            return None
+        
+        # If patient_code folder does not exist create it
+        patient_code=patient_code.strip().replace(" ","_")
+        patient_path=os.path.join(output_directory,patient_code)
+        
+        # Create directory if it does not exist
+        if not os.path.exists(patient_path):
+            os.mkdir(patient_path)
+        
+        file_name=patient_code+"___"+step_name+".csv"
+        file_path=os.path.join(patient_path,file_name)
+        logging.info("`to_csv` is writing to {}.".format(file_path))
+        click.echo("Writing file out to {}".format(file_path))
+        self.latest_df.to_csv(file_path,date_format=time_format)
