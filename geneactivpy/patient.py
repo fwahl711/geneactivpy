@@ -168,6 +168,7 @@ class Patient:
         """
         Takes in list of lines from binary file and returns a dictionary containing calibration information (gain,offset,volts,lux) and frequency of device
         """
+        click.echo("\t Getting basic info.")
     
         try:
             start_cal_index=data.index("Calibration Data")+1
@@ -289,6 +290,7 @@ class Patient:
         Find all blocks of recorded data in the binary file, send them to be parsed and combine the values from each block afterwards.
         Multiprocessing elegible.
         """
+        click.echo("\t Getting raw values.")
 
         # Get information required to split data in blocks
         ## Get index of the start of the blocks 
@@ -318,6 +320,7 @@ class Patient:
         Takes the dataframe with the x,y,z,light and temperature column.
         Using the calibration dict, it adjusts the xyz columns
         """
+        click.echo("\t Calibrating values.")
         if not self.validate_columns(required_columns=['x','y','z','light']):
             logging.error("A column is missing in the dataframe for the calibration to occur.")
             return
@@ -349,6 +352,7 @@ class Patient:
         Takes a dataframe and creates rolling windows. Using those
         windows, it computes either the median, mean or std of each window.
         """
+        click.echo("\t Rolling df on a window of {} secs and applying `{}`".format(window_seconds,operation))
         if window_seconds>0:
             roll_seconds="{}S".format(window_seconds)
             logging.info("`roll_window`: roll_seconds={}".format(roll_seconds))
@@ -384,6 +388,7 @@ class Patient:
         Equation:
             atan(z/sqrt(x^2 +y^2)) *180/pi
         """
+        click.echo("\t Calculating wrist angle.")
         # Check if self.df has been calculated
         if self.df is None:
             logging.warning("Dataframe `df` is not defined. Probably skipped a step.")
@@ -405,6 +410,7 @@ class Patient:
         change is bigger than angles_threshold. Inactivity is when the 
         values are between -threshold and +threshold.
         """
+        click.echo("\t Determining inactivity with a rolling\n\t window of {} mins and with\n\t a threshold of {} degrees.".format(window_minutes,diff_angle_threshold))
         try:
             # Checking as to the type of input
             if not isinstance(self.angles,pd.Series):
@@ -450,6 +456,7 @@ class Patient:
         Then after resampling the data, it applies `operation` on it.
         `operation`: sum, mean, std, median, count
         """
+        click.echo("\t Compressing df and applying a `{}`".format(operation))
         if c_w_minutes>0:
             # Convert compress_window_minute to appropriate format
             sampling_rule="{:.2g}T".format(c_w_minutes)
