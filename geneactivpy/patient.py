@@ -507,7 +507,7 @@ class Patient:
             return None
         
         # If patient_code folder does not exist create it
-        patient_code=[i]patient_code.strip().replace(" ","_")
+        patient_code=patient_code.strip().replace(" ","_")
         patient_path=os.path.join(output_directory,patient_code)
         
         # Create directory if it does not exist
