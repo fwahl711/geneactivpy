@@ -34,9 +34,9 @@ class Patient:
         self.fn=patient_name
         if not self.fn:
             if self.path_processed:
-                self.fn=os.path.basename(self.path_processed).split(".")[:-1]
+                self.fn="".join([str(i) for i in os.path.basename(self.path_processed).split(".")[:-1]])
             elif self.path_binary:
-                self.fn=os.path.basename(self.path_binary).split(".")[:-1]
+                self.fn="".join([str(i) for i in os.path.basename(self.path_binary).split(".")[:-1]])
 
         # Last step do to
         self.endpoint=endpoint
@@ -507,7 +507,7 @@ class Patient:
             return None
         
         # If patient_code folder does not exist create it
-        patient_code=patient_code.strip().replace(" ","_")
+        patient_code=[i]patient_code.strip().replace(" ","_")
         patient_path=os.path.join(output_directory,patient_code)
         
         # Create directory if it does not exist
