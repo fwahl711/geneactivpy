@@ -45,7 +45,8 @@ def binary(intermediate,target_directory,endpoint,compress_minutes,input_files):
         click.echo("Processing file: {}".format(f))
         tmp=Patient(path_binary=f,endpoint=endpoint,compress_minutes=compress_minutes)
         click.echo("Writing file: {}".format(f))
-        tmp.to_csv(target_directory)
+        tmp.write_inactivity(target_directory)
+        tmp.write_dev_sleep(target_directory)
 
 @cli.command('combine')
 @click.option('--target_directory','-t',default=os.path.join(os.getcwd(),"ActiwatchData"),help="The top directory for all the output of the application.")

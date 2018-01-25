@@ -13,13 +13,14 @@ Class that does the bulk of the work.
 """
 
 class Patient:
-    def __init__(self,path_binary=None,path_processed=None,endpoint="compress",write_intermediary=False,compress_minutes=0,patient_name=None):
+    def __init__(self,path_binary=None,path_processed=None,endpoint="compress",write_intermediary=False,compress_minutes=5,patient_name=None):
         self.calibration=None
         self.basic_info=None
         self.df=None
         self.angles=None
         self.inactivity=None
         self.inactivity_compressed=False
+        self.dev_sleep=None
 
         self.latest_df=None
         self.compress_minutes=compress_minutes
@@ -27,7 +28,7 @@ class Patient:
         self.path_binary=path_binary
         self.path_processed=path_processed
         if self.path_binary is None and self.path_processed is None:
-            logging.error("A file is required to create a class instance. Specify either 'path_binary' or 'path_processed'.")
+            logging.warning("A file was not given in creation of a class instance. Specify either 'path_binary' or 'path_processed'.")
             return
 
         # set filename base (take patient_name)
@@ -122,6 +123,13 @@ class Patient:
         """
         Processes the binary file.
         Stops at the step that is given at the start.
+        Ordered steps:
+            - Get basic info
+            - Get raw values (x,y,z,light,temp)
+            - Calibrate values (x,y,z,light)
+            - Use rolling window (operation median) to smooth data
+            - Calculate angle with smoothed data
+            - Determine periods of inactivity by looking at windows of time where
         """
         # Open file
         with open(self.path_binary,'r') as f:
@@ -144,13 +152,16 @@ class Patient:
         if self.endpoint=='roll':
             return
         # Calculate wrist angles
+        ## and average angles over 5 seconds
         self.calc_angle()
+        self.angles=self.compress_windows_df(self.angle,c_w_seconds=5,operation='mean')
         if self.endpoint=='angles':
             return
         # Get sleep score
         self.determine_activity()
         if self.endpoint=='inactivity':
             return
+        
         # Compress dataframe
         self.inactivity=self.compress_windows_df(self.inactivity,c_w_minutes=self.compress_minutes,operation='sum')
         self.inactivity_compressed=True
@@ -288,7 +299,7 @@ class Patient:
     def get_raw_values(self,data):
         """
         Find all blocks of recorded data in the binary file, send them to be parsed and combine the values from each block afterwards.
-        Multiprocessing elegible.
+        Multiprocessing enabled.
         """
         click.echo("\t Getting raw values.")
 
@@ -308,8 +319,10 @@ class Patient:
         self.df=pd.concat(returned_dfs)
         self.latest_df=self.df
 
-    def validate_columns(self,required_columns=["x","y","z","temperature"]):
-        columns=self.df.columns
+    def validate_columns(self,dataframe=None,required_columns=["x","y","z","temperature"]):
+        if dataframe is None:
+            dataframe=self.df
+        columns=dataframe.columns
         for elem in required_columns:
             if elem not in columns:
                 return False
@@ -390,7 +403,7 @@ class Patient:
         """
         click.echo("\t Calculating wrist angle.")
         # Check if self.df has been calculated
-        if self.df is None:
+        if self.latest_df is None:
             logging.warning("Dataframe `df` is not defined. Probably skipped a step.")
             return
 
@@ -398,7 +411,7 @@ class Patient:
             logging.error("Cannot calculate the angle, a column is missing.")
             return
         
-        self.angles=self.df['z']/np.sqrt(np.power(self.df['x'],2)+np.power(self.df['y'],2))
+        self.angles=self.latest_df['z']/np.sqrt(np.power(self.latest_df['x'],2)+np.power(self.latest_df['y'],2))
         self.angles=np.arctan(self.angles)*180/np.pi
         self.latest_df=self.angles
 
@@ -483,26 +496,35 @@ class Patient:
             return None
         return resampled_data
 
-    def to_csv(self,output_directory,patient_code=None,step_name=None,time_format="%Y-%m-%d %H:%M:%S.%f"):
+    def compute_dev_sleep(self,c_w_minutes=1):
         """
-        Given a dataframe, save it with the name of the step.
-        Within the output_directory, have directories for 
-        each participant and within them the different 
-        intermediate steps and the final output.
+        Sets up dataframe with the time + x_dev + y_dev + z_dev + temperature 
+            + light + sleep score
         """
+
+        # Calculate x_dev, y_dev and z_dev over c_w_minutes window
+        self.dev_sleep=compress_windows_df(self.df[['x','y','z']],c_w_minutes=c_w_minutes,operation="std")
+        self.dev_sleep=self.dev_sleep.rename(index=str,columns={"x":"x_dev","y":"y_dev","z":"z_dev"})
+
+        self.dev_sleep['time']=self.dev_sleep.index
+        self.dev_sleep[['temp','light']]=compress_windows_df(self.df[['temperature','light']],c_w_minutes=c_w_minutes,operation='mean')
+        self.dev_sleep['sleep score']=compress_windows_df(self.inactivity,c_w_minutes=c_w_minutes,operation='mean')
+
+    def write_inactivity(self,output_directory,patient_code=None,time_format="%Y-%m-%d %H:%M:%S.%f"):
+        """
+        Writes the inactivity dataframe to the directory.
+        """
+
         if patient_code is None:
             patient_code=self.fn
-        if step_name is None:
-            step_name=self.endpoint
         try:
-            if self.latest_df is None:
+            if self.inactivity is None:
                 raise NameError
         except NameError:
             click.echo("Attempting to write a variable that does not exists.")
             logging.error("Attempting to write a variable that does not exists. ")
             return None
-        # Type check of df
-        if not (isinstance(self.latest_df,pd.DataFrame) or isinstance(self.latest_df,pd.Series)):
+        if not (isinstance(self.inactivity,pd.DataFrame) or isinstance(self.inactivity,pd.Series)):
             logging.error("The input is not an instance of a DataFrame or a Series [type={}]".format(str(type(df))))
             return None
         
@@ -513,8 +535,46 @@ class Patient:
         # Create directory if it does not exist
         if not os.path.exists(patient_path):
             os.mkdir(patient_path)
-        file_name=patient_code+"___"+step_name+".csv"
+        file_name=patient_code+"___inactivity.csv"
         file_path=os.path.join(patient_path,file_name)
         logging.info("`to_csv` is writing to {}.".format(file_path))
         click.echo("Writing file out to {}".format(file_path))
-        self.latest_df.to_csv(file_path,date_format=time_format)
+        
+        if 'time' not in self.inactivity.columns:
+            self.inactivity['time']=self.inactivity.index
+        self.inactivity.to_csv(file_path,index=False,date_format=time_format,header=True)
+
+    def write_dev_sleep(self,output_directory,patient_code=None,time_format="%Y-%m-%d %H:%M:%S"):
+        """
+        Writes csv with the time + x,y,z standard deviations +
+            temperature + light + sleep scores 
+        The values are averages for 1 minute.
+        """
+
+        if self.dev_sleep is None:
+            compute_dev_sleep()
+
+        if patient_code is None:
+            patient_code=self.fn
+        try:
+            if self.dev_sleep is None:
+                raise NameError
+        except NameError:
+            click.echo("Attempting to write a variable that does not exists.")
+            logging.error("Attempting to write a variable that does not exists. ")
+            return None
+        
+        # If patient_code folder does not exist create it
+        patient_code=patient_code.strip().replace(" ","_")
+        patient_path=os.path.join(output_directory,patient_code)
+        
+        # Create directory if it does not exist
+        if not os.path.exists(patient_path):
+            os.mkdir(patient_path)
+        file_name=patient_code+"___dev_sleep.csv"
+        file_path=os.path.join(patient_path,file_name)
+        logging.info("`to_csv` is writing to {}.".format(file_path))
+        click.echo("Writing file out to {}".format(file_path))
+        
+        # 
+        self.dev_sleep.to_csv(file_path,index=False,date_format=time_format,header=True)
