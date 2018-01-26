@@ -550,7 +550,7 @@ class Patient:
         """
 
         if self.dev_sleep is None:
-            compute_dev_sleep()
+            self.compute_dev_sleep()
 
         if patient_code is None:
             patient_code=self.fn
