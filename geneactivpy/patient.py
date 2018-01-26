@@ -154,7 +154,7 @@ class Patient:
         # Calculate wrist angles
         ## and average angles over 5 seconds
         self.calc_angle()
-        self.angles=self.compress_windows_df(self.angle,c_w_seconds=5,operation='mean')
+        self.angles=self.compress_windows_df(self.angles,c_w_seconds=5,operation='mean')
         if self.endpoint=='angles':
             return
         # Get sleep score
@@ -401,7 +401,7 @@ class Patient:
         Equation:
             atan(z/sqrt(x^2 +y^2)) *180/pi
         """
-        click.echo("\t Calculating wrist angle.")
+        click.echo("\t Calculating wrist angles.")
         # Check if self.df has been calculated
         if self.latest_df is None:
             logging.warning("Dataframe `df` is not defined. Probably skipped a step.")
