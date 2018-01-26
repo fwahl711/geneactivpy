@@ -540,7 +540,9 @@ class Patient:
         logging.info("`to_csv` is writing to {}.".format(file_path))
         click.echo("Writing file out to {}".format(file_path))
         
-        self.inactivity.to_csv(file_path,index=True,date_format=time_format,header=True)
+        if 'time' not in self.inactivity.columns:
+            self.inactivity['time']=self.inactivity.index
+        self.inactivity.to_csv(file_path,index=False,date_format=time_format,header=True)
 
     def write_dev_sleep(self,output_directory,patient_code=None,time_format="%Y-%m-%d %H:%M:%S"):
         """
