@@ -44,7 +44,7 @@ def binary(intermediate,target_directory,endpoint,compress_minutes,input_files):
         # Create an Patient instance
         click.echo("Processing file: {}".format(f))
         tmp=Patient(path_binary=f,endpoint=endpoint,compress_minutes=compress_minutes)
-        click.echo("Writing file: {}".format(f))
+        click.echo("Writing files from {}".format(f))
         tmp.write_inactivity(target_directory)
         tmp.write_dev_sleep(target_directory)
 

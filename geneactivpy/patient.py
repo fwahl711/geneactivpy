@@ -41,9 +41,6 @@ class Patient:
 
         # Last step do to
         self.endpoint=endpoint
-        # Whether to create intermediary files if True
-        ## else save after the last step
-        self.write_intermediary=write_intermediary
 
         if self.path_processed:
             # Read processed file into Dataframe
@@ -163,7 +160,7 @@ class Patient:
             return
 
         # Compress dataframe
-        self.inactivity=self.compress_windows_df(self.inactivity,c_w_minutes=self.compress_minutes,operation='sum')
+        self.inactivity=self.compress_windows_df(self.inactivity,c_w_minutes=1,operation='sum')
         self.inactivity_compressed=True
         self.latest_df=self.inactivity
         if self.endpoint=='compress':
@@ -179,7 +176,7 @@ class Patient:
         """
         Takes in list of lines from binary file and returns a dictionary containing calibration information (gain,offset,volts,lux) and frequency of device
         """
-        click.echo("\t Getting basic info.")
+        click.echo("\t * Getting basic info.")
 
         try:
             start_cal_index=data.index("Calibration Data")+1
@@ -227,9 +224,6 @@ class Patient:
         page_time=None
         hexstring=None
 
-        # Debug: to see Sequence Number
-    #     print(recording_block_list[2])
-    #     print("Length of one-block list: %d"%len(recording_block_list))
 
         for index in range(len(recording_block_list)):
             tmp=recording_block_list[index]
@@ -301,7 +295,7 @@ class Patient:
         Find all blocks of recorded data in the binary file, send them to be parsed and combine the values from each block afterwards.
         Multiprocessing enabled.
         """
-        click.echo("\t Getting raw values.")
+        click.echo("\t * Getting raw values.")
 
         # Get information required to split data in blocks
         ## Get index of the start of the blocks
@@ -333,7 +327,7 @@ class Patient:
         Takes the dataframe with the x,y,z,light and temperature column.
         Using the calibration dict, it adjusts the xyz columns
         """
-        click.echo("\t Calibrating values.")
+        click.echo("\t * Calibrating values.")
         if not self.validate_columns(required_columns=['x','y','z','light']):
             logging.error("A column is missing in the dataframe for the calibration to occur.")
             return
@@ -365,7 +359,7 @@ class Patient:
         Takes a dataframe and creates rolling windows. Using those
         windows, it computes either the median, mean or std of each window.
         """
-        click.echo("\t Rolling df on a window of {} secs and applying `{}`".format(window_seconds,operation))
+        click.echo("\t * Rolling df on a window of {} secs and applying `{}`".format(window_seconds,operation))
         if window_seconds>0:
             roll_seconds="{}S".format(window_seconds)
             logging.info("`roll_window`: roll_seconds={}".format(roll_seconds))
@@ -401,7 +395,7 @@ class Patient:
         Equation:
             atan(z/sqrt(x^2 +y^2)) *180/pi
         """
-        click.echo("\t Calculating wrist angles.")
+        click.echo("\t * Calculating wrist angles.")
         # Check if self.df has been calculated
         if self.latest_df is None:
             logging.warning("Dataframe `df` is not defined. Probably skipped a step.")
@@ -413,7 +407,6 @@ class Patient:
 
         self.angles=self.latest_df['z']/np.sqrt(np.power(self.latest_df['x'],2)+np.power(self.latest_df['y'],2))
         self.angles=np.arctan(self.angles)*180/np.pi
-        self.latest_df=self.angles
 
     def determine_activity(self,window_minutes=5,diff_angle_threshold=5):
         """
@@ -423,17 +416,17 @@ class Patient:
         change is bigger than angles_threshold. Inactivity is when the
         values are between -threshold and +threshold.
         """
-        click.echo("\t Determining inactivity with a rolling\n\t window of {} mins and with\n\t a threshold of {} degrees.".format(window_minutes,diff_angle_threshold))
-        try:
-            # Checking as to the type of input
-            if not isinstance(self.angles,pd.Series):
-                raise ValueError
-        except NameError:
-            logging.error("Angles has not been calculated.")
-            return
-        except ValueError:
-            logging.error("Angles is not a pandas series. An error has occured somewhere. Find it.")
-            return
+        click.echo("\t * Determining inactivity with a rolling\n\t    window of {} mins and with\n\t    a threshold of {} degrees.".format(window_minutes,diff_angle_threshold))
+        #try:
+        #    # Checking as to the type of input
+        #    if not isinstance(self.angles,pd.Series):
+        #        raise ValueError
+        #except NameError:
+        #    logging.error("Angles have not been calculated.")
+        #    return
+        #except ValueError:
+        #    logging.error("'Angles' is not a pandas series. An error has occured somewhere. Find it.")
+        #    return
 
         # Rolling rule prep
         if (isinstance(window_minutes, int) or isinstance(window_minutes,float)) and window_minutes>0:
@@ -460,6 +453,8 @@ class Patient:
                 return 0
 
         self.inactivity=diff_angles.rolling(roll_rule).apply(window_inactivity)
+        print("Activity and inactivity after rolling angles difference.")
+        print(self.inactivity)
         self.latest_df=self.inactivity
 
     def compress_windows_df(self,data,c_w_minutes=0,c_w_seconds=0,operation='sum'):
@@ -469,7 +464,7 @@ class Patient:
         Then after resampling the data, it applies `operation` on it.
         `operation`: sum, mean, std, median, count
         """
-        click.echo("\t Compressing df and applying a `{}`".format(operation))
+        click.echo("\t * Compressing a dataframe and applying `{}`".format(operation))
         if c_w_minutes>0:
             # Convert compress_window_minute to appropriate format
             sampling_rule="{:.2g}T".format(c_w_minutes)
@@ -479,22 +474,20 @@ class Patient:
         else:
             return None
 
-        resampled_data=data.resample(sampling_rule)
 
         if operation == 'sum':
-            resampled_data=resampled_data.sum()
+            return data.resample(sampling_rule).sum()
         elif operation == 'mean':
-            resampled_data=resampled_data.mean()
+            return data.resample(sampling_rule).mean()
         elif operation == 'std':
-            resampled_data=resampled_data.std()
+            return data.resample(sampling_rule).std()
         elif operation == 'median':
-            resampled_data=resampled_data.median()
+            return data.resample(sampling_rule).median()
         elif operation == 'count':
-            resampled_data=resampled_data.count()
+            return data.resample(sampling_rule).count()
         else:
             logging.error("'compress_data': operation '{}' not supported.".format(operation))
             return None
-        return resampled_data
 
     def compute_dev_sleep(self,c_w_minutes=1):
         """
@@ -508,13 +501,14 @@ class Patient:
 
         self.dev_sleep['time']=self.dev_sleep.index
         self.dev_sleep[['temp','light']]=self.compress_windows_df(self.df[['temperature','light']],c_w_minutes=c_w_minutes,operation='mean')
-        self.dev_sleep['sleep score']=self.compress_windows_df(self.inactivity,c_w_minutes=c_w_minutes,operation='mean')
+        self.dev_sleep['sleep score']=self.inactivity
+        self.dev_sleep=self.dev_sleep[['time','sleep score','x_dev','y_dev','z_dev','temp','light']]
 
-    def write_inactivity(self,output_directory,patient_code=None,time_format="%Y-%m-%d %H:%M:%S.%f"):
+    def write_inactivity(self,output_directory=os.getcwd(),patient_code=None,time_format="%Y-%m-%d %H:%M:%S.%f",compress_minutes=5):
         """
         Writes the inactivity dataframe to the directory.
         """
-
+        click.echo("\t * Writing inactivity to file")
         if patient_code is None:
             patient_code=self.fn
         try:
@@ -524,31 +518,34 @@ class Patient:
             click.echo("Attempting to write a variable that does not exists.")
             logging.error("Attempting to write a variable that does not exists. ")
             return None
-        if not (isinstance(self.inactivity,pd.DataFrame) or isinstance(self.inactivity,pd.Series)):
-            logging.error("The input is not an instance of a DataFrame or a Series [type={}]".format(str(type(df))))
-            return None
+        #if not (isinstance(self.inactivity,pd.DataFrame) or isinstance(self.inactivity,pd.Series)):
+        #    logging.error("The input is not an instance of a DataFrame or a Series [type={}]".format(str(type(df))))
+        #    return None
+        
+        # Rolling rule
+        roll_rule="{:.2g}T".format(compress_minutes)
 
         # If patient_code folder does not exist create it
         patient_code=patient_code.strip().replace(" ","_")
         patient_path=os.path.join(output_directory,patient_code)
 
         # Create directory if it does not exist
-        if not os.path.exists(patient_path):
-            os.mkdir(patient_path)
+        os.makedirs(patient_path,exist_ok=True)
+
         file_name=patient_code+"___inactivity.csv"
         file_path=os.path.join(patient_path,file_name)
         logging.info("`to_csv` is writing to {}.".format(file_path))
         click.echo("Writing file out to {}".format(file_path))
 
-        self.inactivity.to_csv(file_path,index=True,date_format=time_format,header=True)
+        self.inactivity.resample(roll_rule).mean().to_csv(file_path,index=True,date_format=time_format)
 
-    def write_dev_sleep(self,output_directory,patient_code=None,time_format="%Y-%m-%d %H:%M:%S"):
+    def write_dev_sleep(self,output_directory=os.getcwd(),patient_code=None,time_format="%Y-%m-%d %H:%M:%S"):
         """
         Writes csv with the time + x,y,z standard deviations +
             temperature + light + sleep scores
         The values are averages for 1 minute.
         """
-
+        click.echo("\t * Writing std of values, sleep scores and others for each minute.")
         if self.dev_sleep is None:
             self.compute_dev_sleep()
 
